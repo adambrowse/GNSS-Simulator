@@ -1,3 +1,10 @@
+'''
+An educational tool that allows users to build their own satellite systems and visualise trilateration
+Code written by Adam Browse
+agl.browse@gmail.com
+February 2024
+'''
+
 import sys
 import numpy as np
 import math
