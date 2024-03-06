@@ -1,10 +1,3 @@
-'''
-An educational tool that allows users to build their own satellite systems and visualise trilateration
-Code written by Adam Browse
-agl.browse@gmail.com
-February 2024
-'''
-
 import sys
 import numpy as np
 import math
@@ -49,12 +42,6 @@ class Camera:
     def rotate_x_minus(self, angle):
         self.elevation += angle
 
-    def rotate_y_plus(self, angle):
-        self.azimuth += angle
-
-    def rotate_y_minus(self, angle):
-        self.azimuth -= angle
-
     def rotate_z_plus(self, angle):
         self.skew += angle
 
@@ -72,7 +59,7 @@ class gnssSimulator(QOpenGLWidget):
         self.gravitational_parameter = 398600
 
         # Create timer for animation
-        self.speed_up = 60
+        self.speed_up = 30
         self.timer = QTimer()
         self.timer.timeout.connect(self.animate_satellite)
         self.timer.start(30)
@@ -83,14 +70,13 @@ class gnssSimulator(QOpenGLWidget):
         self.longitude = -90
 
         # Initialise the list of satellites
-        # name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour
         self.satellites = [
-            ("Sat1", math.radians(0), 0, 26500, math.radians(55), math.radians(0), (1, 0, 0)), 
-            ("Sat2", math.radians(60), 0, 26500, math.radians(55), math.radians(60), (0, 1, 0)),
-            ("Sat3", math.radians(120), 0, 26500, math.radians(55), math.radians(120), (0, 0, 1)), 
-            ("Sat4", math.radians(180), 0, 26500, math.radians(55), math.radians(180), (1, 1, 0)),
-            ("Sat5", math.radians(240), 0, 26500, math.radians(55), math.radians(240), (1, 0, 1)), 
-            ("Sat6", math.radians(300), 0, 26500, math.radians(55), math.radians(300), (0, 1, 1)), 
+            {"name": "Sat1", "true_anomaly": math.radians(0), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(0), "colour": (1, 0, 0)}, 
+            {"name": "Sat2", "true_anomaly": math.radians(60), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(60), "colour": (0, 1, 0)},
+            {"name": "Sat3", "true_anomaly": math.radians(120), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(120), "colour": (1, 0.7, 0)}, 
+            {"name": "Sat4", "true_anomaly": math.radians(180), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(180), "colour": (1, 1, 0)},
+            {"name": "Sat5", "true_anomaly": math.radians(240), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(240), "colour": (1, 0, 1)}, 
+            {"name": "Sat6", "true_anomaly": math.radians(300), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(300), "colour": (0, 1, 1)}, 
         ]
 
         # State acceptable satellite colours
@@ -122,7 +108,7 @@ class gnssSimulator(QOpenGLWidget):
 
         # Add a slider to control the animation speed
         self.speed_slider = QSlider(Qt.Horizontal)
-        self.speed_slider.setRange(1, 100)
+        self.speed_slider.setRange(1, 300)
         self.speed_slider.setValue(self.speed_up)
         self.speed_slider.valueChanged.connect(self.update_speed_up)
         self.toggle_layout.addWidget(self.speed_slider)
@@ -141,34 +127,26 @@ class gnssSimulator(QOpenGLWidget):
         self.setLayout(main_layout)
 
     def animate_satellite(self):
-        updated_satellites = []
         for orbit_params in self.satellites:
-            # Read satellite data
-            name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = orbit_params
-
             # Update satellite angle for animation
-            a = semi_major_axis
-            e = eccentricity
-            v = true_anomaly
+            v = orbit_params["true_anomaly"]
+            e = orbit_params["eccentricity"]
+            a = orbit_params["semi_major_axis"]
             mu = self.gravitational_parameter
 
             r = a * (1 - e ** 2) / (1 + e * math.cos(v))
-            omega = math.sqrt(mu/r**3)
+            omega = math.sqrt(mu / r ** 3)
 
-            true_anomaly += omega * self.speed_up
+            v += omega * self.speed_up
 
-            if true_anomaly >= 2*np.pi:
-                true_anomaly = 0
+            if v >= 2 * np.pi:
+                v = 0
 
-            updated_satellites.append((name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour))
-        
-        # Update the self.satellites list with the modified values
-        self.satellites = updated_satellites
+            orbit_params["true_anomaly"] = v
+
         self.update()
 
     def draw_lines_of_latitude(self):
-        glDisable(GL_LIGHTING)
-
         radius = self.earth_radius + 80
 
         glColor3f(0, 0, 1)
@@ -189,11 +167,7 @@ class gnssSimulator(QOpenGLWidget):
                 glVertex3f(x2, y2, z2)
                 glEnd()
 
-        glEnable(GL_LIGHTING)
-
     def draw_lines_of_longitude(self):
-        glDisable(GL_LIGHTING)
-
         radius = self.earth_radius + 80
 
         glColor3f(0, 0, 1)
@@ -214,8 +188,6 @@ class gnssSimulator(QOpenGLWidget):
                 glVertex3f(x2, y2, z2)
                 glEnd()
 
-        glEnable(GL_LIGHTING)
-
     def initializeGL(self):
         # Initialise the lighting
         glClearColor(0, 0, 0, 1)
@@ -227,18 +199,18 @@ class gnssSimulator(QOpenGLWidget):
         glEnable(GL_LIGHTING)
 
         # Set the light position (above-right-front)
-        light_position = [1.0, 1.0, 1.0, 0.0]
+        light_position = [1, 1, 1, 0]
         glLightfv(GL_LIGHT0, GL_POSITION, light_position)
-        light_diffuse = [1.0, 1.0, 1.0, 1.0]
+        light_diffuse = [1, 1, 1, 1]
         glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse)
 
         glEnable(GL_LIGHT0)
 
         # Set the lighting for the Earth
-        earth_ambient = [0.2, 0.2, 0.5, 1.0]
-        earth_diffuse = [0.2, 0.2, 0.6, 1.0]
-        earth_specular = [0.1, 0.1, 0.1, 1.0]
-        earth_shininess = 10.0
+        earth_ambient = [0.2, 0.2, 0.5, 1]
+        earth_diffuse = [0.2, 0.2, 0.6, 1]
+        earth_specular = [0.1, 0.1, 0.1, 1]
+        earth_shininess = 10
         glMaterialfv(GL_FRONT, GL_AMBIENT, earth_ambient)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, earth_diffuse)
         glMaterialfv(GL_FRONT, GL_SPECULAR, earth_specular)
@@ -318,18 +290,20 @@ class gnssSimulator(QOpenGLWidget):
         # Translate the Earth to the center
         glTranslatef(0, 0, 0)
 
+        glEnable(GL_LIGHTING)
+
         # Draw the Earth
         glColor3f(0, 0, 1)
         quadric = gluNewQuadric()
         gluSphere(quadric, self.earth_radius, 100, 100)
+
+        glDisable(GL_LIGHTING)
 
         # Draw the lines of latitude and longitude
         self.draw_lines_of_latitude()
         self.draw_lines_of_longitude()
 
     def draw_receiver(self):
-        glDisable(GL_LIGHTING)
-
         # Calculate the position of the receiver
         latitude = self.latitude
         longitude = self.longitude
@@ -347,21 +321,16 @@ class gnssSimulator(QOpenGLWidget):
         # Translate back to the origin
         glTranslatef(-x, -y, -z)
 
-        glEnable(GL_LIGHTING)
-
         return(x, y, z)
 
     def draw_satellite(self, orbit_params):
-        # Read satellite data
-        name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = orbit_params
-
-        glDisable(GL_LIGHTING)
-
         # Calculate satellite's position based on its current angle
-        v = true_anomaly
-        a = semi_major_axis
-        e = eccentricity
-        i = inclination
+        v = orbit_params["true_anomaly"]
+        a = orbit_params["semi_major_axis"]
+        e = orbit_params["eccentricity"]
+        i = orbit_params["inclination"]
+        raan = orbit_params["raan"]
+        colour = orbit_params["colour"]
         r = a * (1 - e ** 2) / (1 + e * math.cos(v))
         x = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
         y = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
@@ -374,18 +343,11 @@ class gnssSimulator(QOpenGLWidget):
         quadric = gluNewQuadric()
         gluSphere(quadric, R, 100, 100)
 
-        glEnable(GL_LIGHTING)
-
         glTranslatef(-x, -y, -z)
 
         return(x, y, z)
 
     def draw_circle_on_earth(self, orbit_params, satellite_position, receiver_position):
-        # Read satellite data
-        name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = orbit_params
-        
-        glDisable(GL_LIGHTING)
-
         # Convert points to numpy arrays
         origin = np.array((0, 0, 0))
         receiver = np.array(receiver_position)
@@ -433,6 +395,7 @@ class gnssSimulator(QOpenGLWidget):
             z = closest_point[2] + radius * (basis_vector1[2] * np.cos(angle) + basis_vector2[2] * np.sin(angle))
             vertex_array[i] = [x, y, z]
 
+        colour = orbit_params["colour"]
         glColor3f(*colour)
         
         # Draw the circle
@@ -443,22 +406,19 @@ class gnssSimulator(QOpenGLWidget):
 
         glEnd()
 
-        glEnable(GL_LIGHTING)
-
     def draw_satellite_range(self, orbit_params, satellite_position, receiver_position):
-        # Read satellite data
-        name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = orbit_params
+        # Get cartesian positions
         receiver = np.array(receiver_position)
         satellite = np.array(satellite_position)
         radius = np.linalg.norm(satellite - receiver)
 
-        glDisable(GL_LIGHTING)
-
         # Calculate satellite's position based on its current angle
-        v = true_anomaly
-        a = semi_major_axis
-        e = eccentricity
-        i = inclination
+        v = orbit_params["true_anomaly"]
+        a = orbit_params["semi_major_axis"]
+        e = orbit_params["eccentricity"]
+        i = orbit_params["inclination"]
+        raan = orbit_params["raan"]
+        colour = orbit_params["colour"]
         r = a * (1 - e ** 2) / (1 + e * math.cos(v))
         x = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
         y = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
@@ -473,25 +433,19 @@ class gnssSimulator(QOpenGLWidget):
         quadric = gluNewQuadric()
         gluSphere(quadric, R, 100, 100)
 
-        glEnable(GL_LIGHTING)
-
         glTranslatef(-x, -y, -z)
 
     def draw_satellite_orbit(self, orbit_params):
-        # Read satellite data
-        name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = orbit_params
-
-        glDisable(GL_LIGHTING)
-
         # Draw satellite orbit
         glColor3f(1, 1, 1)
 
         glBegin(GL_LINE_LOOP)
         for ang in range(360):
             v = math.radians(ang)
-            a = semi_major_axis
-            e = eccentricity
-            i = inclination
+            a = orbit_params["semi_major_axis"]
+            e = orbit_params["eccentricity"]
+            i = orbit_params["inclination"]
+            raan = orbit_params["raan"]
             r = a * (1 - e ** 2) / (1 + e * math.cos(v))
             x = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
             y = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
@@ -501,22 +455,14 @@ class gnssSimulator(QOpenGLWidget):
 
         glEnd()
 
-        glEnable(GL_LIGHTING)
-
     def draw_connection_line(self, satellite_position, receiver_position, orbit_params):
-        # Read satellite data
-        name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = orbit_params
-
-        glDisable(GL_LIGHTING)
-
         # Draw the line
+        colour = orbit_params["colour"]
         glColor3f(*colour)
         glBegin(GL_LINES)
         glVertex3f(satellite_position[0], satellite_position[1], satellite_position[2])
         glVertex3f(receiver_position[0], receiver_position[1], receiver_position[2])
         glEnd()
-
-        glEnable(GL_LIGHTING)
 
     def resizeGL(self, w, h):
         # Set the viewport
@@ -694,7 +640,7 @@ class gnssSimulator(QOpenGLWidget):
         ok_button = QPushButton("OK")
         def handle_ok_button_click():
             for satellite in self.satellites:
-                if satellite[0] == name_input.text():
+                if satellite["name"] == name_input.text():
                     QMessageBox.warning(None, "Choose another name", "This satellite name already exists")
                     return
                 
@@ -726,7 +672,13 @@ class gnssSimulator(QOpenGLWidget):
             eccentricity = 0.99
 
         # Add the satellite to the list
-        self.satellites.append((name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour))
+        self.satellites.append({"name": name, 
+                                "true_anomaly": true_anomaly, 
+                                "eccentricity": eccentricity, 
+                                "semi_major_axis": semi_major_axis, 
+                                "inclination": inclination, 
+                                "raan": raan, 
+                                "colour": colour})
 
         self.update()
 
@@ -778,14 +730,14 @@ class gnssSimulator(QOpenGLWidget):
         receiver_position = self.find_receiver_position()
 
         for index, satellite in enumerate(self.satellites):
-            satellite_name = satellite[0]
+            satellite_name = satellite["name"]
             satellite_label = QLabel(satellite_name)
             delete_button = QPushButton("Delete")
 
             colour_box = QFrame()
             colour_box.setFrameShape(QFrame.Box)
             colour_box.setFixedSize(20, 20)
-            colour = satellite[-1]
+            colour = satellite["colour"]
             R, G, B = int(colour[0]), int(colour[1]), int(colour[2])
             max_val = max(R, G, B)
             if max_val == 0:
@@ -886,14 +838,12 @@ class gnssSimulator(QOpenGLWidget):
         return np.array([x_rec, y_rec, z_rec])
 
     def find_satellite_position(self, satellite):
-        # Read satellite data
-        name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour = satellite
-
         # Calculate the position of the satellite
-        v = true_anomaly
-        a = semi_major_axis
-        e = eccentricity
-        i = inclination
+        v = satellite["true_anomaly"]
+        a = satellite["semi_major_axis"]
+        e = satellite["eccentricity"]
+        i = satellite["inclination"]
+        raan = satellite["raan"]
         r = a * (1 - e ** 2) / (1 + e * math.cos(v))
         x_sat = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
         y_sat = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
