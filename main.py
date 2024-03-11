@@ -11,6 +11,7 @@ import math
 import random
 from PyQt5.QtWidgets import QSlider, QFrame, QScrollArea, QMessageBox, QDoubleSpinBox, QLineEdit, QLabel, QDialog, QPushButton, QCheckBox, QApplication, QMainWindow, QOpenGLWidget, QHBoxLayout, QVBoxLayout, QWidget
 from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QIcon
 from OpenGL.GL import *
 from OpenGL.GLU import *
 
@@ -866,8 +867,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
+        # Define the window
         self.setWindowTitle('GNSS Visualiser')
-        
         self.setGeometry(100, 100, 1600, 800)
         
         # Create the app
@@ -881,12 +882,18 @@ class MainWindow(QMainWindow):
         self.keyPressEvent = self.gnss_simulator.keyPressEvent
         self.wheelEvent = self.gnss_simulator.wheelEvent
 
-# Call the app
-app = QApplication(sys.argv)
 
-# Create the main window
-main_window = MainWindow()
-main_window.show()
+def main():
+    # Call the app
+    app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon('icon.png'))
 
-# Let's go!
-sys.exit(app.exec_())
+    # Create the main window
+    main_window = MainWindow()
+    main_window.show()
+
+    # Let's go!
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()
