@@ -6,15 +6,18 @@ February 2024
 '''
 
 import sys
+import os
+import ast
+from functools import partial
 import numpy as np
-import math
+from math import sin, cos, radians, sqrt
 import random
-from PyQt5.QtWidgets import QSlider, QFrame, QScrollArea, QMessageBox, QDoubleSpinBox, QLineEdit, QLabel, QDialog, QPushButton, QCheckBox, QApplication, QMainWindow, QOpenGLWidget, QHBoxLayout, QVBoxLayout, QWidget
-from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QInputDialog, QFileDialog, QAction, QSlider, QFrame, QScrollArea, QMessageBox, QDoubleSpinBox, QLineEdit, QLabel, QDialog, QPushButton, QCheckBox, QApplication, QMainWindow, QOpenGLWidget, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QIcon, QPainter, QColor, QFont
 from OpenGL.GL import *
 from OpenGL.GLU import *
-
+import coverage
 
 class Camera:
     def __init__(self):
@@ -56,9 +59,8 @@ class Camera:
     def rotate_z_minus(self, angle):
         self.skew -= angle
 
-
 class gnssSimulator(QOpenGLWidget):
-    def __init__(self, parent=None):
+    def __init__(self, file_path, parent=None):
         super().__init__(parent)
         self.camera = Camera()
 
@@ -78,14 +80,7 @@ class gnssSimulator(QOpenGLWidget):
         self.longitude = -90
 
         # Initialise the list of satellites
-        self.satellites = [
-            {"name": "Sat1", "true_anomaly": math.radians(0), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(0), "colour": (1, 0, 0)}, 
-            {"name": "Sat2", "true_anomaly": math.radians(60), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(60), "colour": (0, 1, 0)},
-            {"name": "Sat3", "true_anomaly": math.radians(120), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(120), "colour": (1, 0.7, 0)}, 
-            {"name": "Sat4", "true_anomaly": math.radians(180), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(180), "colour": (1, 1, 0)},
-            {"name": "Sat5", "true_anomaly": math.radians(240), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(240), "colour": (1, 0, 1)}, 
-            {"name": "Sat6", "true_anomaly": math.radians(300), "eccentricity": 0, "semi_major_axis": 10000, "inclination": math.radians(55), "raan": math.radians(300), "colour": (0, 1, 1)}, 
-        ]
+        self.load_satellites(file_path)
 
         # State acceptable satellite colours
         self.suitable_colours = [
@@ -134,6 +129,30 @@ class gnssSimulator(QOpenGLWidget):
         main_layout.addWidget(self.toggle_widget)
         self.setLayout(main_layout)
 
+        # Define coverage sphere points
+        self.coverage_sphere_points = coverage.sphere_points
+
+    def load_satellites(self, file_path):
+        satellites = {}
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read().strip()
+                # Safely evaluate the string containing the dictionary
+                satellites = ast.literal_eval(content)
+        except Exception as e:
+            self.show_warning(f"An error occurred while opening the file:\n{str(e)}")
+            return None
+
+        self.satellites = satellites
+
+    def save_file(self, file_path):
+        try:
+            with open(file_path, 'w') as file:
+                file.write(str(self.satellites))  # Write the dictionary as string
+        except Exception as e:
+            self.show_warning(f"An error occurred while saving the file:\n{str(e)}")
+            return None
+
     def animate_satellite(self):
         for orbit_params in self.satellites:
             # Update satellite angle for animation
@@ -142,8 +161,8 @@ class gnssSimulator(QOpenGLWidget):
             a = orbit_params["semi_major_axis"]
             mu = self.gravitational_parameter
 
-            r = a * (1 - e ** 2) / (1 + e * math.cos(v))
-            omega = math.sqrt(mu / r ** 3)
+            r = a * (1 - e ** 2) / (1 + e * cos(v))
+            omega = sqrt(mu / r ** 3)
 
             v += omega * self.speed_up
 
@@ -161,16 +180,16 @@ class gnssSimulator(QOpenGLWidget):
 
         # Draw the latitude lines every 10 degrees
         for i in range(-90, 91, 10):
-            angle = math.radians(i)
+            angle = radians(i)
             
             for j in range(0, 360, 10):
                 glBegin(GL_LINE_STRIP)
-                x1 = radius * math.cos(math.radians(j)) * math.cos(angle)
-                y1 = radius * math.sin(math.radians(j)) * math.cos(angle)
-                z1 = radius * math.sin(angle)
-                x2 = radius * math.cos(math.radians(j + 10)) * math.cos(angle)
-                y2 = radius * math.sin(math.radians(j + 10)) * math.cos(angle)
-                z2 = radius * math.sin(angle)
+                x1 = radius * cos(radians(j)) * cos(angle)
+                y1 = radius * sin(radians(j)) * cos(angle)
+                z1 = radius * sin(angle)
+                x2 = radius * cos(radians(j + 10)) * cos(angle)
+                y2 = radius * sin(radians(j + 10)) * cos(angle)
+                z2 = radius * sin(angle)
                 glVertex3f(x1, y1, z1)
                 glVertex3f(x2, y2, z2)
                 glEnd()
@@ -182,16 +201,16 @@ class gnssSimulator(QOpenGLWidget):
 
         # Draw the longitude lines every 10 degrees
         for i in range(-180, 181, 10): 
-            angle = math.radians(i)
+            angle = radians(i)
             
             for j in range(-90, 91, 10):
                 glBegin(GL_LINE_STRIP)
-                x1 = radius * math.cos(math.radians(j)) * math.cos(angle)
-                y1 = radius * math.sin(math.radians(j)) * math.cos(angle)
-                z1 = radius * math.sin(angle)
-                x2 = radius * math.cos(math.radians(j)) * math.cos(angle + math.radians(10))
-                y2 = radius * math.sin(math.radians(j)) * math.cos(angle + math.radians(10))
-                z2 = radius * math.sin(angle + math.radians(10))
+                x1 = radius * cos(radians(j)) * cos(angle)
+                y1 = radius * sin(radians(j)) * cos(angle)
+                z1 = radius * sin(angle)
+                x2 = radius * cos(radians(j)) * cos(angle + radians(10))
+                y2 = radius * sin(radians(j)) * cos(angle + radians(10))
+                z2 = radius * sin(angle + radians(10))
                 glVertex3f(x1, y1, z1)
                 glVertex3f(x2, y2, z2)
                 glEnd()
@@ -261,13 +280,13 @@ class gnssSimulator(QOpenGLWidget):
                     self.draw_satellite_orbit(orbit_params)
 
             # Empty array for satellite coordinates
-            sat_coords = []
+            self.sat_coords = []
 
             # Draw the satellites, receiver, lines of sight and circles
             for orbit_params in self.satellites:
                 if self.satellites_on:
                     x_sat, y_sat, z_sat = self.draw_satellite(orbit_params)
-                    sat_coords.append([x_sat, y_sat, z_sat])
+                    self.sat_coords.append([x_sat, y_sat, z_sat])
 
                     # Check if the receiver exists and has an uninterrupted view of satellite
                     if self.receiver_on and self.has_uninterrupted_view((x_sat, y_sat, z_sat), (x_rec, y_rec, z_rec)):
@@ -279,7 +298,7 @@ class gnssSimulator(QOpenGLWidget):
             # Draw the spheres
             for i, orbit_params in enumerate(self.satellites):
                 if self.satellites_on:
-                    x_sat, y_sat, z_sat = sat_coords[i]
+                    x_sat, y_sat, z_sat = self.sat_coords[i]
 
                     # Check if the receiver exists and has an uninterrupted view of satellite
                     if self.receiver_on and self.has_uninterrupted_view((x_sat, y_sat, z_sat), (x_rec, y_rec, z_rec)):
@@ -290,7 +309,7 @@ class gnssSimulator(QOpenGLWidget):
             self.toggle_widget.resize(200, 200)
             self.toggle_widget.move(10, self.height() - 210)
             self.toggle_widget.show()
-        
+
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
 
@@ -316,9 +335,9 @@ class gnssSimulator(QOpenGLWidget):
         latitude = self.latitude
         longitude = self.longitude
         radius = self.earth_radius + 50
-        x = radius * math.cos(math.radians(longitude)) * math.cos(math.radians(latitude))
-        y = radius * math.sin(math.radians(longitude)) * math.cos(math.radians(latitude))
-        z = radius * math.sin(math.radians(latitude))
+        x = radius * cos(radians(longitude)) * cos(radians(latitude))
+        y = radius * sin(radians(longitude)) * cos(radians(latitude))
+        z = radius * sin(radians(latitude))
 
         glTranslatef(x, y, z)
 
@@ -339,10 +358,10 @@ class gnssSimulator(QOpenGLWidget):
         i = orbit_params["inclination"]
         raan = orbit_params["raan"]
         colour = orbit_params["colour"]
-        r = a * (1 - e ** 2) / (1 + e * math.cos(v))
-        x = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
-        y = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
-        z = r * math.sin(v) * math.sin(i)
+        r = a * (1 - e ** 2) / (1 + e * cos(v))
+        x = r * (cos(raan) * cos(v) - sin(raan) * sin(v) * cos(i))
+        y = r * (sin(raan) * cos(v) + cos(raan) * sin(v) * cos(i))
+        z = r * sin(v) * sin(i)
 
         # Draw the satellite
         glTranslatef(x, y, z)
@@ -427,10 +446,10 @@ class gnssSimulator(QOpenGLWidget):
         i = orbit_params["inclination"]
         raan = orbit_params["raan"]
         colour = orbit_params["colour"]
-        r = a * (1 - e ** 2) / (1 + e * math.cos(v))
-        x = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
-        y = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
-        z = r * math.sin(v) * math.sin(i)
+        r = a * (1 - e ** 2) / (1 + e * cos(v))
+        x = r * (cos(raan) * cos(v) - sin(raan) * sin(v) * cos(i))
+        y = r * (sin(raan) * cos(v) + cos(raan) * sin(v) * cos(i))
+        z = r * sin(v) * sin(i)
 
         # Set satellite's position
         glTranslatef(x, y, z)
@@ -449,15 +468,15 @@ class gnssSimulator(QOpenGLWidget):
 
         glBegin(GL_LINE_LOOP)
         for ang in range(360):
-            v = math.radians(ang)
+            v = radians(ang)
             a = orbit_params["semi_major_axis"]
             e = orbit_params["eccentricity"]
             i = orbit_params["inclination"]
             raan = orbit_params["raan"]
-            r = a * (1 - e ** 2) / (1 + e * math.cos(v))
-            x = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
-            y = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
-            z = r * math.sin(v) * math.sin(i)
+            r = a * (1 - e ** 2) / (1 + e * cos(v))
+            x = r * (cos(raan) * cos(v) - sin(raan) * sin(v) * cos(i))
+            y = r * (sin(raan) * cos(v) + cos(raan) * sin(v) * cos(i))
+            z = r * sin(v) * sin(i)
 
             glVertex3f(x, y, z)
 
@@ -595,6 +614,13 @@ class gnssSimulator(QOpenGLWidget):
         # Ignore keyboard presses eg space bar
         self.edit_receiver_button.setFocusPolicy(Qt.NoFocus)
 
+        self.stats_button = QPushButton("Analysis", self)
+        self.stats_button.setGeometry(10, 130, 100, 30)
+        self.stats_button.clicked.connect(self.stats_form)
+
+        # Ignore keyboard presses eg space bar
+        self.stats_button.setFocusPolicy(Qt.NoFocus)
+
     def new_satellite_form(self):
         # Create a new window
         dialog = QDialog(self)
@@ -672,9 +698,9 @@ class gnssSimulator(QOpenGLWidget):
 
     def add_satellite_from_form(self, name, true_anomaly, eccentricity, semi_major_axis, inclination, raan, colour):
         # Convert true anomaly and inclination from degrees to radians
-        true_anomaly = math.radians(true_anomaly)
-        inclination = math.radians(inclination)
-        raan = math.radians(raan)
+        true_anomaly = radians(true_anomaly)
+        inclination = radians(inclination)
+        raan = radians(raan)
 
         if eccentricity == 1:
             eccentricity = 0.99
@@ -798,7 +824,7 @@ class gnssSimulator(QOpenGLWidget):
         # Create a new window
         dialog = QDialog(self)
         dialog.setWindowTitle("Edit Receiver")
-        dialog.setGeometry(200, 200, 300, 200)
+        dialog.setGeometry(200, 200, 300, 100)
         layout = QVBoxLayout()
 
         # Create input fields for latitude and longitude
@@ -831,6 +857,20 @@ class gnssSimulator(QOpenGLWidget):
 
         dialog.exec_()
 
+    def stats_form(self):
+        # Pause the animation if it's going
+        if self.timer.isActive():
+            self.timer.stop()
+
+        dialog = CoverageDialog(self)
+        worker = Worker(self.sat_coords, self.coverage_sphere_points, parent=self)
+
+        worker.progress.connect(dialog.update_progress)
+        worker.finished.connect(dialog.update_label)
+        worker.start()
+
+        dialog.exec_()
+        
     def update_speed_up(self, value):
         self.speed_up = value
 
@@ -839,9 +879,9 @@ class gnssSimulator(QOpenGLWidget):
         latitude = self.latitude
         longitude = self.longitude
         radius = self.earth_radius + 10
-        x_rec = radius * math.cos(math.radians(longitude)) * math.cos(math.radians(latitude))
-        y_rec = radius * math.sin(math.radians(longitude)) * math.cos(math.radians(latitude))
-        z_rec = radius * math.sin(math.radians(latitude))
+        x_rec = radius * cos(radians(longitude)) * cos(radians(latitude))
+        y_rec = radius * sin(radians(longitude)) * cos(radians(latitude))
+        z_rec = radius * sin(radians(latitude))
 
         return np.array([x_rec, y_rec, z_rec])
 
@@ -852,41 +892,255 @@ class gnssSimulator(QOpenGLWidget):
         e = satellite["eccentricity"]
         i = satellite["inclination"]
         raan = satellite["raan"]
-        r = a * (1 - e ** 2) / (1 + e * math.cos(v))
-        x_sat = r * (math.cos(raan) * math.cos(v) - math.sin(raan) * math.sin(v) * math.cos(i))
-        y_sat = r * (math.sin(raan) * math.cos(v) + math.cos(raan) * math.sin(v) * math.cos(i))
-        z_sat = r * math.sin(v) * math.sin(i)
+        r = a * (1 - e ** 2) / (1 + e * cos(v))
+        x_sat = r * (cos(raan) * cos(v) - sin(raan) * sin(v) * cos(i))
+        y_sat = r * (sin(raan) * cos(v) + cos(raan) * sin(v) * cos(i))
+        z_sat = r * sin(v) * sin(i)
 
         return np.array([x_sat, y_sat, z_sat])
 
     def find_distance(self, satellite_position, receiver_position):
         return str(round(np.linalg.norm(satellite_position - receiver_position), 2))
  
- 
+class Worker(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(dict)
+
+    def __init__(self, sat_coords, coverage_sphere_points, parent=None):
+        super().__init__(parent)
+        self.sat_coords = sat_coords
+        self.coverage_sphere_points = coverage_sphere_points
+
+    def run(self):
+        point_coverage_array = np.zeros(len(self.coverage_sphere_points))
+        total_points = len(self.coverage_sphere_points)
+        total_iterations = len(self.sat_coords) * total_points
+        iteration = 0
+
+        for s in self.sat_coords:
+            for p_index, p in enumerate(self.coverage_sphere_points):
+                if self.parent().has_uninterrupted_view(tuple(s), tuple(p)):
+                    point_coverage_array[p_index] += 1
+
+                # Calculate and emit progress
+                iteration += 1
+                progress_percentage = int((iteration / total_iterations) * 100)
+                self.progress.emit(progress_percentage)
+
+        unique_elements, counts = np.unique(point_coverage_array, return_counts=True)
+        total_elements = len(point_coverage_array)
+
+        percentage_dict = {}
+        for element, count in zip(unique_elements, counts):
+            percentage = (count / total_elements) * 100
+            percentage_dict[str(element)] = f"{percentage:.1f}%"
+
+        self.finished.emit(percentage_dict)
+
+class CoverageDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Coverage analysis")
+        self.setGeometry(300, 200, 300, 50)
+        self.layout = QVBoxLayout(self)
+
+        self.label = QLabel("Calculating... \n 0%", self)
+        self.layout.addWidget(self.label)
+        self.setLayout(self.layout)
+
+    def update_progress(self, progress):
+        self.label.setText(f"Calculating... \n {progress}%")
+
+    def update_label(self, percentage_dict):
+        self.label.setText("Percentage of earth visible by:\n")
+        for element, percentage in percentage_dict.items():
+            self.label.setText(self.label.text() + f"{float(element):.0f} satellites: {percentage}\n")
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        
+
         # Define the window
         self.setWindowTitle('GNSS Visualiser')
         self.setGeometry(100, 100, 1600, 800)
+
+        # Create the menu bar
+        menubar = self.menuBar()
+
+        self.satellites = [
+            {"name": "Sat1", "true_anomaly": radians(0), "eccentricity": 0, "semi_major_axis": 10000, "inclination": radians(55), "raan": radians(0), "colour": (1, 0, 0)}, 
+            {"name": "Sat2", "true_anomaly": radians(60), "eccentricity": 0, "semi_major_axis": 10000, "inclination": radians(55), "raan": radians(60), "colour": (0, 1, 0)},
+            {"name": "Sat3", "true_anomaly": radians(120), "eccentricity": 0, "semi_major_axis": 10000, "inclination": radians(55), "raan": radians(120), "colour": (1, 0.7, 0)}, 
+            {"name": "Sat4", "true_anomaly": radians(180), "eccentricity": 0, "semi_major_axis": 10000, "inclination": radians(55), "raan": radians(180), "colour": (1, 1, 0)},
+            {"name": "Sat5", "true_anomaly": radians(240), "eccentricity": 0, "semi_major_axis": 10000, "inclination": radians(55), "raan": radians(240), "colour": (1, 0, 1)}, 
+            {"name": "Sat6", "true_anomaly": radians(300), "eccentricity": 0, "semi_major_axis": 10000, "inclination": radians(55), "raan": radians(300), "colour": (0, 1, 1)}, 
+        ]
+
+        # Automatically save a text file containing default satellites
+        self.file_path = self.open_or_make_file()
         
-        # Create the app
+        # Create the "File" menu
+        fileMenu = menubar.addMenu('File')
+
+        # Add "New" action to the "File" menu
+        newAct = QAction('New', self)
+        newAct.triggered.connect(self.new_file_dialog)
+        fileMenu.addAction(newAct)
+
+        # Add "Open" action to the "File" menu
+        openAct = QAction('Open', self)
+        openAct.triggered.connect(self.open_file_dialog)
+        fileMenu.addAction(openAct)
+
+        # Add "Save" action to the "File" menu
+        saveAct = QAction('Save', self)
+        saveAct.triggered.connect(self.save_file_dialog)
+        fileMenu.addAction(saveAct)
+
+        # Add "save_as" action to the "File" menu
+        save_asAct = QAction('Save As', self)
+        save_asAct.triggered.connect(self.save_as_file_dialog)
+        fileMenu.addAction(save_asAct)
+
+        # Create the "More" menu
+        moreMenu = menubar.addMenu('More')
+        about_action = QAction('About', self)
+        about_action.triggered.connect(self.about_dialog)
+        moreMenu.addAction(about_action)
+        
+        # Create the central widget and layout
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
-        self.gnss_simulator = gnssSimulator(self.central_widget)
+
+        # Create an instance of GNSSSimulator and add it to the layout
+        self.gnss_simulator = gnssSimulator(self.file_path, self.central_widget)
         self.layout.addWidget(self.gnss_simulator)
 
         # Key press event connection
         self.keyPressEvent = self.gnss_simulator.keyPressEvent
         self.wheelEvent = self.gnss_simulator.wheelEvent
 
+    def open_or_make_file(self):
+        folder_path = "GNSS Scenarios"
+
+        # Create the folder if it doesn't exist
+        os.makedirs(folder_path, exist_ok=True)
+
+        # Get all .gnss files in the folder
+        gnss_files = [f for f in os.listdir(folder_path) if f.endswith(".gnss")]
+
+        if gnss_files:
+            # Find the latest file by modification time
+            gnss_files_with_mtime = [(f, os.path.getmtime(os.path.join(folder_path, f))) for f in gnss_files]
+            latest_file = max(gnss_files_with_mtime, key=lambda x: x[1])[0]
+            file_path = os.path.join(folder_path, latest_file)
+        else:
+            # Makes a new file if none exists
+            new_file_name = "newScenario.gnss"
+            file_path = os.path.join(folder_path, new_file_name)
+
+        # Write default GNSS data to the new file if it doesn't exist
+        if not os.path.exists(file_path):
+            with open(file_path, 'w') as file:
+                file.write(str(self.satellites))
+
+        file_name_base = os.path.splitext(os.path.basename(file_path))[0]
+        self.setWindowTitle(f'GNSS Visualiser \u00A9 Adam Browse 2024 | {file_name_base}')  
+
+        return file_path
+    
+    def new_file_dialog(self):
+        new_file_path = os.path.join("GNSS Scenarios", "newScenario.gnss")
+
+        # Write default GNSS data to the new file
+        with open(new_file_path, 'w') as file:
+            file.write(str(self.satellites))
+
+        # Update file_path and window title
+        self.file_path = new_file_path
+        file_name_base = os.path.basename(os.path.splitext(new_file_path)[0])
+        self.setWindowTitle(f'GNSS Visualiser \u00A9 Adam Browse 2024 | {file_name_base}')
+
+        # Update GNSS simulator with new file data
+        self.gnss_simulator.load_satellites(new_file_path)
+
+    def open_file_dialog(self):
+        folder_path = "GNSS Scenarios"
+        file_path, _ = QFileDialog.getOpenFileName(self, "Open File", folder_path, "GNSS Files (*.gnss)")
+        if file_path:
+            file_name_base = os.path.basename(os.path.splitext(file_path)[0])
+            self.setWindowTitle(f'GNSS Visualiser \u00A9 Adam Browse 2024 | {file_name_base}')
+            self.file_path = file_path
+            self.gnss_simulator.load_satellites(file_path)
+
+    def save_file_dialog(self):
+        if self.file_path and os.path.basename(self.file_path) == "newScenario.gnss":
+            self.save_as_file_dialog()
+        else:
+            self.gnss_simulator.save_file(self.file_path)
+            file_name_base = os.path.basename(os.path.splitext(self.file_path)[0])
+            self.setWindowTitle(f'GNSS Visualiser \u00A9 Adam Browse 2024 | {file_name_base}')
+
+    def save_as_file_dialog(self):
+        # Show input dialog to get new file name
+        current_file_name = os.path.splitext(os.path.basename(self.file_path))[0]
+        text, ok = QInputDialog.getText(self, 'Save As', '', text=current_file_name)
+        if ok and text:
+            folder_path = "GNSS Scenarios"
+            new_file_name = text + ".gnss"
+            new_file_path = os.path.join(folder_path, new_file_name)
+            
+            if os.path.exists(new_file_path):
+                QMessageBox.warning(self, 'Error', 'File name already exists!')
+                return
+            
+            # save_as the file
+            os.rename(self.file_path, new_file_path)
+            
+            # Update file_path and window title
+            self.file_path = new_file_path
+            file_name_base = os.path.basename(os.path.splitext(new_file_path)[0])
+            self.setWindowTitle(f'GNSS Visualiser \u00A9 Adam Browse 2024 | {file_name_base}')
+            
+            # Save the file with the new name
+            self.save_file_dialog()
+
+    def about_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('About')
+        dialog.setGeometry(200, 200, 300, 100)
+        
+        layout = QVBoxLayout()
+        
+        label = QLabel('This is a simple version of what I hope will be a more comprehensive GNSS visualiser in the future. <br> Please e-mail me if you encounter any issues or have any suggestions for development. <br> Contact me at: <a href="mailto:agl.browse@gmail.com">agl.browse@gmail.com</a>  <br> Copyright Adam Browse 2024', dialog)
+        label.setOpenExternalLinks(True)
+        label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        label.setOpenExternalLinks(True)
+        label.setOpenExternalLinks(True)
+        
+        layout.addWidget(label)
+        
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 def main():
     # Call the app
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon('icon.png'))
+    
+    # Set the window icon
+    icon_path = resource_path('icon.png')
+    app.setWindowIcon(QIcon(icon_path))
 
     # Create the main window
     main_window = MainWindow()
